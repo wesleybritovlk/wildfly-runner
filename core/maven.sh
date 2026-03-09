@@ -8,7 +8,7 @@ configure_profiles() {
     $mvn_bin help:all-profiles | grep "Profile Id:" | sort -u
     echo ""
     read -p "Digite os profiles desejados separados por virgula: " selected
-    [ ! -z "$selected" ] && echo "$selected" | tr ',' '\n' | xargs > "$p_dir/.profiles"
+    [ ! -z "$selected" ] && echo "$selected" | tr ',' ' ' | xargs > "$p_dir/.profiles"
     echo "Profiles salvos em $p_dir/.profiles"
 }
 

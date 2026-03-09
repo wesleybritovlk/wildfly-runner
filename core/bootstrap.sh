@@ -4,6 +4,11 @@ setup_structure() {
     [ ! -f "$SOURCE_DIR/global.jvm" ] && echo "-Xms2048m -Xmx2048m -Dfile.encoding=UTF-8" > "$SOURCE_DIR/global.jvm"
     [ ! -f "$SOURCE_DIR/templates/.env.example" ] && echo "VAR_NAME=value" > "$SOURCE_DIR/templates/.env.example"
     [ ! -f "$SOURCE_DIR/templates/.profiles.example" ] && echo "default" > "$SOURCE_DIR/templates/.profiles.example"
+    if [ ! -f "$SOURCE_DIR/templates/standalone-h2.xml" ]; then
+        cat <<EOF > "$SOURCE_DIR/templates/standalone-h2.xml"
+<server xmlns="urn:jboss:domain:10.0"><interfaces><interface name="public"><inet-address value="127.0.0.1"/></interface></interfaces><socket-binding-group name="standard-sockets" default-interface="public" port-offset="\${jboss.socket.binding.port-offset:0}"><socket-binding name="http" port="\${jboss.http.port:8080}"/><socket-binding name="management-http" interface="management" port="\${jboss.management.http.port:9990}"/></socket-binding-group><profile><subsystem xmlns="urn:jboss:domain:datasources:5.0"><datasources><datasource jndi-name="java:jboss/datasources/ExampleDS" pool-name="ExampleDS" enabled="true"><connection-url>jdbc:h2:mem:test;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE</connection-url><driver>h2</driver></datasource><drivers><driver name="h2" module="com.h2database.h2"/></drivers></datasources></subsystem></profile></server>
+EOF
+    fi
 }
 
 install_engines() {
@@ -11,7 +16,6 @@ install_engines() {
     local p_dir="$SOURCE_DIR/projects/$name"
     local mvn_path=""
     local WF_SELECTED_VER=""
-
     local existing_mvns=($(ls -d $SOURCE_DIR/engines/maven-* 2>/dev/null | sed "s|$SOURCE_DIR/engines/maven-||"))
     if [ ${#existing_mvns[@]} -gt 0 ]; then
         echo "Mavens encontrados em engines/:"
@@ -23,7 +27,6 @@ install_engines() {
             mvn_path="$SOURCE_DIR/engines/maven-$MVN_SELECTED_VER/bin/mvn"
         fi
     fi
-
     if [ -z "$mvn_path" ]; then
         local sys_mvn=$(command -v mvn)
         if [ ! -z "$sys_mvn" ]; then
@@ -33,7 +36,6 @@ install_engines() {
             [ "${choice,,}" == "s" ] && mvn_path="$sys_mvn"
         fi
     fi
-
     if [ -z "$mvn_path" ]; then
         local mvn_list=($(curl -sL https://archive.apache.org/dist/maven/maven-3/ | grep -oP '(?<=href=")3\.[0-9]+\.[0-9]+(?=/")' | sort -uV -r | head -n 15))
         echo "Versões Maven sugeridas:"
@@ -44,11 +46,10 @@ install_engines() {
         if [ ! -d "$SOURCE_DIR/engines/maven-$MVN_SELECTED_VER" ]; then
             echo "Baixando Maven $MVN_SELECTED_VER..."
             curl -L --progress-bar "https://archive.apache.org/dist/maven/maven-3/$MVN_SELECTED_VER/binaries/apache-maven-$MVN_SELECTED_VER-bin.tar.gz" | tar -xz -C "$SOURCE_DIR/engines/" || exit 1
-            [ -d "$SOURCE_DIR/engines/apache-maven-$MVN_SELECTED_VER" ] && mv "$SOURCE_DIR/engines/apache-maven-$MVN_SELECTED_VER" "$SOURCE_DIR/engines/maven-$MVN_SELECTED_VER"
+        [ -d "$SOURCE_DIR/engines/apache-maven-$MVN_SELECTED_VER" ] && mv "$SOURCE_DIR/engines/apache-maven-$MVN_SELECTED_VER" "$SOURCE_DIR/engines/maven-$MVN_SELECTED_VER"
             chmod +x "$mvn_path"
         fi
     fi
-
     local existing_wfs=($(ls -d $SOURCE_DIR/engines/wildfly-* 2>/dev/null | sed "s|$SOURCE_DIR/engines/wildfly-||"))
     if [ ${#existing_wfs[@]} -gt 0 ]; then
         echo "WildFlys encontrados em engines/:"
@@ -59,7 +60,6 @@ install_engines() {
             WF_SELECTED_VER="${existing_wfs[$((choice-1))]}"
         fi
     fi
-
     if [ -z "$WF_SELECTED_VER" ]; then
         read -p "Possui um WildFly customizado ou compactado? (S/n): " has_custom
         has_custom=${has_custom:-s}
@@ -83,11 +83,11 @@ install_engines() {
                 find "$target_dir/bin" -name "*.sh" -exec chmod +x {} +
             fi
         else
-            local wf_list=($(curl -sL https://api.github.com/repos/wildfly/wildfly/releases | grep -oP '"tag_name": "\K[0-9]+\.[0-9]+\.[0-9]+\.Final' | sort -uV -r | head -n 15))
-            echo "Versões WildFly sugeridas:"
-            for i in "${!wf_list[@]}"; do printf "  %2d) %s\n" "$((i+1))" "${wf_list[$i]}"; done
+        local wf_list=($(curl -sL https://api.github.com/repos/wildfly/wildfly/releases | grep -oP '"tag_name": "\K[0-9]+\.[0-9]+\.[0-9]+\.Final' | sort -uV -r | head -n 15))
+        echo "Versões WildFly sugeridas:"
+        for i in "${!wf_list[@]}"; do printf "  %2d) %s\n" "$((i+1))" "${wf_list[$i]}"; done
             read -p "Escolha o número ou digite a versão: " WF_IN
-            [[ "$WF_IN" =~ ^[0-9]+$ ]] && [ "$WF_IN" -le "${#wf_list[@]}" ] && WF_SELECTED_VER="${wf_list[$((WF_IN-1))]}" || WF_SELECTED_VER=$WF_IN
+        [[ "$WF_IN" =~ ^[0-9]+$ ]] && [ "$WF_IN" -le "${#wf_list[@]}" ] && WF_SELECTED_VER="${wf_list[$((WF_IN-1))]}" || WF_SELECTED_VER=$WF_IN
             WF_SELECTED_VER="${WF_SELECTED_VER#wildfly-}"
             local target_dir="$SOURCE_DIR/engines/wildfly-$WF_SELECTED_VER"
             if [ ! -d "$target_dir" ]; then
@@ -107,12 +107,13 @@ setup_repository() {
     local p_dir=$2
     echo "================================================================"
     echo "1) Usar repositório existente"
-    echo "2) Criar novo código fonte (WildFly Ultimate Initializr)"
+    echo "2) Criar novo código fonte (WildFly Runner Initializr)"
     read -p "Escolha (1/2): " repo_choice
     if [ "$repo_choice" == "2" ]; then
         read -p "Caminho base para o código: " base
         wildfly_initializr "$name" "$base" "$p_dir"
         echo "$base/$name" > "$p_dir/.repo-path"
+        return 2
     else
         read -p "Caminho completo do repositório (onde está o pom.xml): " ext_repo_path
         if [ ! -f "$ext_repo_path/pom.xml" ]; then
@@ -121,5 +122,6 @@ setup_repository() {
             exit 1
         fi
         echo "$ext_repo_path" > "$p_dir/.repo-path"
+        return 1
     fi
 }
