@@ -1,0 +1,111 @@
+#!/bin/bash
+SOURCE_DIR=$(dirname $(readlink -f $0))/..
+source $SOURCE_DIR/core/bootstrap.sh
+source $SOURCE_DIR/core/network.sh
+source $SOURCE_DIR/core/instance.sh
+source $SOURCE_DIR/core/maven.sh
+source $SOURCE_DIR/core/initializer.sh
+
+setup_structure
+
+case "$1" in
+    init)
+        NAME=$2
+        [ -z "$NAME" ] && echo "Erro: Nome do projeto obrigatorio" && exit 1
+        PROJECT_DIR="$SOURCE_DIR/projects/$NAME"
+        mkdir -p "$PROJECT_DIR"
+        install_engines "$NAME"
+        setup_repository "$NAME" "$PROJECT_DIR"
+        REPO_FLOW=$?
+        source "$PROJECT_DIR/.engine-versions"
+        REPO_PATH=$(cat "$PROJECT_DIR/.repo-path")
+        cp $SOURCE_DIR/templates/.env.example "$PROJECT_DIR/.env"
+        cp $SOURCE_DIR/templates/.profiles.example "$PROJECT_DIR/.profiles"
+        touch "$PROJECT_DIR/java-args"
+        configure_profiles "$PROJECT_DIR" "$REPO_PATH" "$MVN_PATH"
+        echo -e "\n================================================================"
+        if [ "$REPO_FLOW" -eq 2 ]; then
+            echo "INFO: Criando standalone.xml base em $PROJECT_DIR/standalone.xml"
+        else
+            echo "AVISO: Copie seu standalone.xml para: $PROJECT_DIR/"
+        fi
+        echo -e "================================================================"
+        echo -e "Projeto configurado! Use: bin/wf run $NAME"
+        echo -e "================================================================\n"
+        ;;
+    profiles)
+        NAME=$2
+        PROJECT_DIR="$SOURCE_DIR/projects/$NAME"
+        [ ! -d "$PROJECT_DIR" ] && echo "Erro: Projeto nao existe" && exit 1
+        source "$PROJECT_DIR/.engine-versions"
+        REPO_PATH=$(cat "$PROJECT_DIR/.repo-path")
+        configure_profiles "$PROJECT_DIR" "$REPO_PATH" "$MVN_PATH"
+        ;;
+    run)
+        DEBUG=false
+        shift
+        while getopts "d" opt; do
+            case $opt in
+                d) DEBUG=true ;;
+            esac
+        done
+        shift $((OPTIND -1))
+        NAME=$1
+        PROJECT_DIR="$SOURCE_DIR/projects/$NAME"
+        [ ! -d "$PROJECT_DIR" ] && echo "Erro: Projeto nao existe" && exit 1
+        source "$PROJECT_DIR/.engine-versions"
+        WF_BASE_PATH="$SOURCE_DIR/engines/wildfly-$WF_SELECTED_VER"
+        REPO_PATH=$(cat "$PROJECT_DIR/.repo-path")
+        XML_PATH=$(ls "$PROJECT_DIR"/*.xml 2>/dev/null | head -n 1)
+        [ -z "$XML_PATH" ] && echo "Erro: standalone.xml nao encontrado" && exit 1
+
+        OFFSET=$(find_dynamic_offset "$XML_PATH" "$DEBUG")
+        
+        RUNTIME_DIR=$(prepare_runtime "$NAME" "$XML_PATH" "$WF_BASE_PATH")
+        JVM_OPTS="$(cat $SOURCE_DIR/global.jvm | xargs) $(cat $PROJECT_DIR/java-args | xargs)"
+        
+        if [ -f "$PROJECT_DIR/.env" ]; then
+            while IFS='=' read -r key value || [ -n "$key" ]; do
+                [[ $key =~ ^#.* ]] && continue
+                [[ -z $key ]] && continue
+                clean_value=$(echo "$value" | tr -d '\r' | xargs)
+                JVM_OPTS="$JVM_OPTS -D$key=$clean_value"
+                export "$key=$clean_value"
+            done < "$PROJECT_DIR/.env"
+        fi
+
+        JVM_OPTS=$(echo "$JVM_OPTS" | sed 's/-agentlib:jdwp=[^ ]*//g')
+
+        if [ "$DEBUG" = true ]; then
+            FINAL_DEBUG_PORT=$((8687 + OFFSET))
+            JVM_OPTS="$JVM_OPTS -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=$FINAL_DEBUG_PORT"
+        fi
+
+        PROFILES=$(cat "$PROJECT_DIR/.profiles" | xargs | tr ' ' ',')
+        check_maven_profiles "$REPO_PATH" "$PROFILES" "$MVN_PATH"
+        build_project "$REPO_PATH" "$PROFILES" "$MVN_PATH"
+        WAR_FILE=$(deploy_war "$REPO_PATH" "$RUNTIME_DIR")
+        
+        CONTEXT="${WAR_FILE%.war}"
+        URL_PATH=""
+        [ "$CONTEXT" != "ROOT" ] && URL_PATH="/$CONTEXT"
+        
+        HTTP_BASE=$(grep 'socket-binding name="http"' "$XML_PATH" | sed -n 's/.*port="\${[^:]*:\([^}]*\)}".*/\1/p')
+        HTTP_BASE=${HTTP_BASE:-8080}
+        FINAL_HTTP_PORT=$((HTTP_BASE + OFFSET))
+
+        chmod +x "$WF_BASE_PATH/bin/standalone.sh"
+        echo "================================================================"
+        echo "Projeto: $NAME"
+        echo "URL: http://localhost:$FINAL_HTTP_PORT$URL_PATH"
+        echo "Offset Aplicado: $OFFSET"
+        [ "$DEBUG" = true ] && echo "Debug Port: $FINAL_DEBUG_PORT"
+        echo "================================================================"
+        
+        export JAVA_OPTS="$JVM_OPTS -Djboss.server.base.dir=$RUNTIME_DIR"
+        "$WF_BASE_PATH/bin/standalone.sh" -b localhost -Djboss.socket.binding.port-offset=$OFFSET --server-config=standalone.xml
+        ;;
+    *)
+        echo "Uso: wf [init|run|profiles] [nome]"
+        ;;
+esac
