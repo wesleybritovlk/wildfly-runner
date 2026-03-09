@@ -15,7 +15,8 @@ show_help() {
     echo -e "Uso: \e[32mwf [comando] [argumentos]\e[0m\n"
     echo -e "\e[1mCOMANDOS:\e[0m"
     echo -e "  \e[32minit [nome]\e[0m           Inicializa um novo projeto"
-    echo -e "  \e[32mrun [-d] [nome]\e[0m       Compila e roda o projeto. \e[33m-d\e[0m ativa o Debug"
+    echo -e "  \e[32mrun [-d|-t|-f] [nome]\e[0m      Compila e roda o projeto (\e[33m-d\e[0m ativa o Debug|\e[33m-t\e[0m ativa o Testes|\e[33m-f\e[0m FAST run   sem rebuild)"
+    echo -e "  \e[32mdeploy [-t|-P profiles] [nome]\e[0m    Compila e gera o package do projeto (\e[33m-t\e[0m ativa o Testes|\e[33m-P\e[0m define os profiles)"
     echo -e "  \e[32mprofiles [nome]\e[0m       Configura os profiles Maven do projeto"
     echo -e "  \e[32mlist\e[0m                  Lista projetos, versões e caminhos"
     echo -e "  \e[32mstatus [nome]\e[0m         Mostra status de execução e portas detalhadas"
@@ -74,11 +75,51 @@ case "$1" in
     profiles)
         configure_profiles_cmd "$2"
         ;;
+    deploy)
+        SKIP_TESTS="-DskipTests"
+        PROFILES_ARG=""
+        shift
+        while getopts "tP:" opt; do
+            case $opt in
+                t) SKIP_TESTS="" ;;
+                P) PROFILES_ARG="$OPTARG" ;;
+            esac
+        done
+        shift $((OPTIND -1))
+        NAME=$1
+        if [ -z "$NAME" ]; then
+            projects=($(ls -d $SOURCE_DIR/projects/*/ 2>/dev/null | xargs -n1 basename))
+            if [ ${#projects[@]} -eq 0 ]; then
+                echo "Erro: Nenhum projeto configurado." && exit 1
+            fi
+            echo "Selecione o projeto para rodar:"
+            for i in "${!projects[@]}"; do printf "  %2d) %s\n" "$((i+1))" "${projects[$i]}"; done
+            read -p "Escolha (1): " choice
+            choice=${choice:-1}
+            NAME=${projects[$((choice-1))]}
+        fi
+        PROJECT_DIR="$SOURCE_DIR/projects/$NAME"
+        source "$PROJECT_DIR/.engine-versions"
+        REPO_PATH=$(cat "$PROJECT_DIR/.repo-path")
+        if [ -z "$PROFILES_ARG" ]; then
+            read -p "Deseja definir perfis Maven para este deploy? (Vazio para usar salvos): " PROFILES_ARG
+            [ -z "$PROFILES_ARG" ] && PROFILES_ARG=$(cat "$PROJECT_DIR/.profiles" | xargs | tr ' ' ',')
+        fi
+        check_maven_profiles "$REPO_PATH" "$PROFILES_ARG" "$MVN_PATH"
+        build_project "$REPO_PATH" "$PROFILES_ARG" "$MVN_PATH" "package" "$SKIP_TESTS"
+        echo -e "\n\e[32mDeploy (Package) concluído para $NAME!\e[0m"
+        ;;
     run)
         DEBUG=false
+        SKIP_TESTS="-DskipTests"
+        FAST_MODE=false
         shift
-        while getopts "d" opt; do
-            case $opt in d) DEBUG=true ;; esac
+        while getopts "dtf" opt; do
+            case $opt in
+                d) DEBUG=true ;;
+                t) SKIP_TESTS="" ;;
+                f) FAST_MODE=true ;;
+            esac
         done
         shift $((OPTIND -1))
         NAME=$1
@@ -127,9 +168,19 @@ case "$1" in
             FINAL_DEBUG_PORT=$((8687 + OFFSET))
             JVM_OPTS="$JVM_OPTS -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=$FINAL_DEBUG_PORT"
         fi
-        PROFILES=$(cat "$PROJECT_DIR/.profiles" | xargs | tr ' ' ',')
-        check_maven_profiles "$REPO_PATH" "$PROFILES" "$MVN_PATH"
-        build_project "$REPO_PATH" "$PROFILES" "$MVN_PATH"
+        if [ "$FAST_MODE" = false ]; then
+            PROFILES=$(cat "$PROJECT_DIR/.profiles" | xargs | tr ' ' ',')
+            check_maven_profiles "$REPO_PATH" "$PROFILES" "$MVN_PATH"
+            build_project "$REPO_PATH" "$PROFILES" "$MVN_PATH" "install" "$SKIP_TESTS"
+        else
+            echo -e "\e[32mModo FAST ativado: Pulando build e procurando WAR existente...\e[0m"
+            EXISTING_WAR=$(find "$REPO_PATH" -name "*.war" -path "*/target/*" | head -n 1)
+            if [ -z "$EXISTING_WAR" ]; then
+                echo -e "\e[31mErro: Modo fast ativado, mas nenhum arquivo .war foi encontrado em $REPO_PATH/target/.\e[0m"
+                echo "Execute sem a flag -f uma vez para gerar o build."
+                exit 1
+            fi
+        fi
         WAR_FILE=$(deploy_war "$REPO_PATH" "$RUNTIME_DIR")
         CONTEXT="${WAR_FILE%.war}"
         URL_PATH=""

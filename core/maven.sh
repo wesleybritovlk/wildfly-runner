@@ -57,11 +57,14 @@ check_maven_profiles() {
 }
 
 build_project() {
-    local repo=$1
+local repo=$1
     local profiles=$2
     local mvn_bin=$3
+    local goal=$4
+    local skip_tests=$5
     cd "$repo"
-    $mvn_bin clean install ${profiles:+-P $profiles} -DskipTests
+    echo "Executando: mvn clean $goal ${profiles:+-P $profiles} $skip_tests"
+    $mvn_bin clean $goal ${profiles:+-P $profiles} $skip_tests
 }
 
 deploy_war() {

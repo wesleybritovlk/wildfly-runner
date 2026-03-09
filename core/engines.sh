@@ -8,10 +8,8 @@ get_usage() {
         [ ! -d "$p_dir" ] && continue
         local env_file="$p_dir/.engine-versions"
         [ ! -f "$env_file" ] && continue
-
         local JAVA_HOME="" JAVA_VER="" MVN_PATH="" WF_SELECTED_VER=""
         source "$env_file" 2>/dev/null
-
         if [ "$type" == "maven" ]; then
             [[ "$MVN_PATH" == *"/maven-$ver/"* ]] && found+=($(basename "$p_dir"))
         elif [ "$type" == "wildfly" ]; then
@@ -160,7 +158,6 @@ install_wf_standalone() {
         read -p "Escolha a versão: " WF_IN
         [[ "$WF_IN" =~ ^[0-9]+$ ]] && [ "$WF_IN" -le "${#wf_list[@]}" ] && ver="${wf_list[$((WF_IN-1))]}" || ver=$WF_IN
         ver="${ver#wildfly-}"
-
         local target="$SOURCE_DIR/engines/wildfly-$ver"
         if [ ! -d "$target" ]; then
             echo "Baixando WildFly $ver..."
