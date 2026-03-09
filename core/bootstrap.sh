@@ -16,9 +16,30 @@ install_engines() {
     local p_dir="$SOURCE_DIR/projects/$name"
     local mvn_path=""
     local WF_SELECTED_VER=""
+    local java_path=""
+    local java_ver=""
+    local current_java_bin=$(which java)
+    local current_java_ver=$(java -version 2>&1 | head -n 1 | awk -F '"' '{print $2}')
+    local current_java_home=$(readlink -f "$current_java_bin" | sed 's|/bin/java||')
+    echo -e "\nConfiguracao de Java:"
+    echo "Java detectado no sistema: $current_java_home (Versao: $current_java_ver)"
+    read -p "Usar este Java para o projeto? (S/n): " choice
+    choice=${choice:-s}
+    if [[ "${choice,,}" == "s" ]]; then
+        java_path="$current_java_home"
+        java_ver="$current_java_ver"
+    else
+        read -p "Informe o caminho completo do JAVA_HOME (Caminho base antes do /bin): " java_path
+        java_path="${java_path%/}" # Remove barra final se houver
+        if [ ! -f "$java_path/bin/java" ]; then
+            echo -e "\e[31mErro: Binario java nao encontrado em $java_path/bin/java. Abortando.\e[0m"
+            exit 1
+        fi
+        java_ver=$("$java_path/bin/java" -version 2>&1 | head -n 1 | awk -F '"' '{print $2}')
+    fi
     local existing_mvns=($(ls -d $SOURCE_DIR/engines/maven-* 2>/dev/null | sed "s|$SOURCE_DIR/engines/maven-||"))
     if [ ${#existing_mvns[@]} -gt 0 ]; then
-        echo "Mavens encontrados em engines/:"
+        echo -e "\nMavens encontrados em engines/:"
         for i in "${!existing_mvns[@]}"; do printf "  %2d) %s\n" "$((i+1))" "${existing_mvns[$i]}"; done
         read -p "Escolha um Maven da engine ou 'n' para novo (1): " choice
         choice=${choice:-1}
@@ -30,10 +51,15 @@ install_engines() {
     if [ -z "$mvn_path" ]; then
         local sys_mvn=$(command -v mvn)
         if [ ! -z "$sys_mvn" ]; then
-            local mvn_v_str=$($sys_mvn -version | head -n 1)
-            read -p "Maven sistema detectado: ($mvn_v_str). Usar? (S/n): " choice
+            local mvn_v_str=$($sys_mvn -version | head -n 1 | awk '{print $3}')
+            read -p "Maven sistema detectado ($mvn_v_str). Copiar para engines? (S/n): " choice
             choice=${choice:-s}
-            [ "${choice,,}" == "s" ] && mvn_path="$sys_mvn"
+            if [ "${choice,,}" == "s" ]; then
+                local sys_mvn_home=$(mvn -version | grep "Maven home" | awk -F': ' '{print $2}')
+                echo "Copiando Maven do sistema para engines/maven-$mvn_v_str..."
+                cp -r "$sys_mvn_home" "$SOURCE_DIR/engines/maven-$mvn_v_str"
+                mvn_path="$SOURCE_DIR/engines/maven-$mvn_v_str/bin/mvn"
+            fi
         fi
     fi
     if [ -z "$mvn_path" ]; then
@@ -46,13 +72,13 @@ install_engines() {
         if [ ! -d "$SOURCE_DIR/engines/maven-$MVN_SELECTED_VER" ]; then
             echo "Baixando Maven $MVN_SELECTED_VER..."
             curl -L --progress-bar "https://archive.apache.org/dist/maven/maven-3/$MVN_SELECTED_VER/binaries/apache-maven-$MVN_SELECTED_VER-bin.tar.gz" | tar -xz -C "$SOURCE_DIR/engines/" || exit 1
-        [ -d "$SOURCE_DIR/engines/apache-maven-$MVN_SELECTED_VER" ] && mv "$SOURCE_DIR/engines/apache-maven-$MVN_SELECTED_VER" "$SOURCE_DIR/engines/maven-$MVN_SELECTED_VER"
+            [ -d "$SOURCE_DIR/engines/apache-maven-$MVN_SELECTED_VER" ] && mv "$SOURCE_DIR/engines/apache-maven-$MVN_SELECTED_VER" "$SOURCE_DIR/engines/maven-$MVN_SELECTED_VER"
             chmod +x "$mvn_path"
         fi
     fi
     local existing_wfs=($(ls -d $SOURCE_DIR/engines/wildfly-* 2>/dev/null | sed "s|$SOURCE_DIR/engines/wildfly-||"))
     if [ ${#existing_wfs[@]} -gt 0 ]; then
-        echo "WildFlys encontrados em engines/:"
+        echo -e "\nWildFlys encontrados em engines/:"
         for i in "${!existing_wfs[@]}"; do printf "  %2d) %s\n" "$((i+1))" "${existing_wfs[$i]}"; done
         read -p "Escolha um WildFly da engine ou 'n' para novo (1): " choice
         choice=${choice:-1}
@@ -83,11 +109,11 @@ install_engines() {
                 find "$target_dir/bin" -name "*.sh" -exec chmod +x {} +
             fi
         else
-        local wf_list=($(curl -sL https://api.github.com/repos/wildfly/wildfly/releases | grep -oP '"tag_name": "\K[0-9]+\.[0-9]+\.[0-9]+\.Final' | sort -uV -r | head -n 15))
-        echo "Versões WildFly sugeridas:"
-        for i in "${!wf_list[@]}"; do printf "  %2d) %s\n" "$((i+1))" "${wf_list[$i]}"; done
+            local wf_list=($(curl -sL https://api.github.com/repos/wildfly/wildfly/releases | grep -oP '"tag_name": "\K[0-9]+\.[0-9]+\.[0-9]+\.Final' | sort -uV -r | head -n 15))
+            echo "Versões WildFly sugeridas:"
+            for i in "${!wf_list[@]}"; do printf "  %2d) %s\n" "$((i+1))" "${wf_list[$i]}"; done
             read -p "Escolha o número ou digite a versão: " WF_IN
-        [[ "$WF_IN" =~ ^[0-9]+$ ]] && [ "$WF_IN" -le "${#wf_list[@]}" ] && WF_SELECTED_VER="${wf_list[$((WF_IN-1))]}" || WF_SELECTED_VER=$WF_IN
+            [[ "$WF_IN" =~ ^[0-9]+$ ]] && [ "$WF_IN" -le "${#wf_list[@]}" ] && WF_SELECTED_VER="${wf_list[$((WF_IN-1))]}" || WF_SELECTED_VER=$WF_IN
             WF_SELECTED_VER="${WF_SELECTED_VER#wildfly-}"
             local target_dir="$SOURCE_DIR/engines/wildfly-$WF_SELECTED_VER"
             if [ ! -d "$target_dir" ]; then
@@ -98,7 +124,9 @@ install_engines() {
             fi
         fi
     fi
-    echo "MVN_PATH=\"$mvn_path\"" > "$p_dir/.engine-versions"
+    echo "JAVA_HOME=\"$java_path\"" > "$p_dir/.engine-versions"
+    echo "JAVA_VER=\"$java_ver\"" >> "$p_dir/.engine-versions"
+    echo "MVN_PATH=\"$mvn_path\"" >> "$p_dir/.engine-versions"
     echo "WF_SELECTED_VER=\"$WF_SELECTED_VER\"" >> "$p_dir/.engine-versions"
 }
 

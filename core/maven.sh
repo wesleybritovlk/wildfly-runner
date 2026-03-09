@@ -1,4 +1,18 @@
 #!/bin/bash
+
+configure_profiles_cmd() {
+    local name=$1
+    if [ -z "$name" ]; then
+        echo -e "\e[31mErro: Nenhum projeto selecionado. Uso: wf profiles [nome]\e[0m"
+        return 1
+    fi
+    local p_dir="$SOURCE_DIR/projects/$name"
+    [ ! -d "$p_dir" ] && echo "Erro: Projeto nao existe" && return 1
+    source "$p_dir/.engine-versions"
+    local repo_path=$(cat "$p_dir/.repo-path")
+    configure_profiles "$p_dir" "$repo_path" "$MVN_PATH"
+}
+
 configure_profiles() {
     local p_dir=$1
     local repo=$2
