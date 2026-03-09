@@ -3,6 +3,17 @@
 configure_profiles_cmd() {
     local name=$1
     if [ -z "$name" ]; then
+        projects=($(ls -d $SOURCE_DIR/projects/*/ 2>/dev/null | xargs -n1 basename))
+        if [ ${#projects[@]} -eq 0 ]; then
+            echo "Erro: Nenhum projeto configurado." && exit 1
+        fi
+        echo "Selecione o projeto para rodar:"
+        for i in "${!projects[@]}"; do printf "  %2d) %s\n" "$((i+1))" "${projects[$i]}"; done
+        read -p "Escolha (1): " choice
+        choice=${choice:-1}
+        name=${projects[$((choice-1))]}
+    fi
+    if [ -z "$name" ]; then
         echo -e "\e[31mErro: Nenhum projeto selecionado. Uso: wf profiles [nome]\e[0m"
         return 1
     fi
