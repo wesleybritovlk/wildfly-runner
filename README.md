@@ -11,7 +11,7 @@ wf-run/
 │       ├── .repo-path   <-- Arquivo oculto que guarda o caminho do código fonte
 │       ├── .env         <-- Variáveis de ambiente (URLs, RabbitMQ)
 │       ├── .profiles    <-- Perfis do Maven (dev, postgres)
-│       ├── java-args    <-- Customização de memória/debug (Opcional)
+│       ├── java-opts    <-- Customização de memória/debug (Opcional)
 │       └── standalone.xml <-- Único XML do projeto
 ├── templates/           <-- Modelos .example para o comando 'init'
 └── global.jvm           <-- Configurações de JVM padrão para todos
