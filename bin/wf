@@ -15,7 +15,8 @@ show_help() {
     echo -e "Uso: \e[32mwf [comando] [argumentos]\e[0m\n"
     echo -e "\e[1mCOMANDOS:\e[0m"
     echo -e "  \e[32minit [nome]\e[0m           Inicializa um novo projeto"
-    echo -e "  \e[32mrun [-d|-t|-f] [nome]\e[0m      Compila e roda o projeto (\e[33m-d\e[0m ativa o Debug|\e[33m-t\e[0m ativa o Testes|\e[33m-f\e[0m FAST run   sem rebuild)"
+    echo -e "  \e[32mrun [-d|-t|-f] [nome]\e[0m      Compila e roda o servidor (\e[33m-d\e[0m ativa o Debug|\e[33m-t\e[0m ativa o Testes|\e[33m-f\e[0m FAST sem recompilar)"
+    echo -e "  \e[32mwatch [-d] [nome]\e[0m     Monitora sem reiniciar o servidor completamente: Hot Sync(UI) e Hot Reload(Java) (\e[33m-d\e[0m ativa o Debug)"
     echo -e "  \e[32mdeploy [-t|-P profiles] [nome]\e[0m    Compila e gera o package do projeto (\e[33m-t\e[0m ativa o Testes|\e[33m-P\e[0m define os profiles)"
     echo -e "  \e[32mprofiles [nome]\e[0m       Configura os profiles Maven do projeto"
     echo -e "  \e[32mlist\e[0m                  Lista projetos, versões e caminhos"
@@ -188,14 +189,82 @@ case "$1" in
         HTTP_BASE=$(grep 'socket-binding name="http"' "$XML_PATH" | sed -n 's/.*port="\${[^:]*:\([^}]*\)}".*/\1/p')
         HTTP_BASE=${HTTP_BASE:-8080}
         FINAL_HTTP_PORT=$((HTTP_BASE + OFFSET))
-        chmod +x "$WF_BASE_PATH/bin/standalone.sh"
         echo "================================================================"
-        echo "Projeto: $NAME"
+        echo "Projeto: $NAME (Artifact: $CONTEXT)"
         echo "URL: http://localhost:$FINAL_HTTP_PORT$URL_PATH"
         echo "Offset Aplicado: $OFFSET"
         [ "$DEBUG" = true ] && echo "Debug Port: $FINAL_DEBUG_PORT"
         echo "================================================================"
         export JAVA_OPTS="$JVM_OPTS -Djboss.server.base.dir=$RUNTIME_DIR"
+        chmod +x "$WF_BASE_PATH/bin/standalone.sh"
+        "$WF_BASE_PATH/bin/standalone.sh" -b localhost -Djboss.socket.binding.port-offset=$OFFSET --server-config=standalone.xml
+        ;;
+    watch)
+        DEBUG=false
+        shift
+        while getopts "d" opt; do
+            case $opt in d) DEBUG=true ;;
+            esac
+        done
+        shift $((OPTIND -1))
+        NAME=$1
+        if [ -z "$NAME" ]; then
+            projects=($(ls -d $SOURCE_DIR/projects/*/ 2>/dev/null | xargs -n1 basename))
+            if [ ${#projects[@]} -eq 0 ]; then
+                echo "Erro: Nenhum projeto configurado." && exit 1
+            fi
+            echo "Selecione o projeto para rodar:"
+            for i in "${!projects[@]}"; do printf "  %2d) %s\n" "$((i+1))" "${projects[$i]}"; done
+            read -p "Escolha (1): " choice
+            choice=${choice:-1}
+            NAME=${projects[$((choice-1))]}
+        fi
+        PROJECT_DIR="$SOURCE_DIR/projects/$NAME"
+        source "$PROJECT_DIR/.engine-versions"
+        export JAVA_HOME="$JAVA_HOME"
+        export PATH="$JAVA_HOME/bin:$PATH"
+        export JAVA="$JAVA_HOME/bin/java"
+        WF_BASE_PATH="$SOURCE_DIR/engines/wildfly-$WF_SELECTED_VER"
+        REPO_PATH=$(cat "$PROJECT_DIR/.repo-path")
+        XML_PATH=$(ls "$PROJECT_DIR"/*.xml 2>/dev/null | head -n 1)
+        OFFSET=$(find_dynamic_offset "$XML_PATH" "$DEBUG")
+        RUNTIME_DIR=$(prepare_watch_runtime "$NAME" "$XML_PATH" "$WF_BASE_PATH")
+        PROFILES=$(cat "$PROJECT_DIR/.profiles" | xargs | tr ' ' ',')
+        build_project "$REPO_PATH" "$PROFILES" "$MVN_PATH" "install" "-DskipTests"
+        deploy_exploded "$REPO_PATH" "$RUNTIME_DIR"
+        WAR_FOLDER=$(ls -d "$RUNTIME_DIR/deployments"/*.war | head -n 1)
+        CONTEXT=$(basename "$WAR_FOLDER" .war)
+        URL_PATH=""
+        [ "$CONTEXT" != "ROOT" ] && URL_PATH="/$CONTEXT"
+        HTTP_BASE=$(grep 'socket-binding name="http"' "$XML_PATH" | sed -n 's/.*port="\${[^:]*:\([^}]*\)}".*/\1/p')
+        HTTP_BASE=${HTTP_BASE:-8080}
+        FINAL_HTTP_PORT=$((HTTP_BASE + OFFSET))
+        JVM_OPTS="$(cat $SOURCE_DIR/global.jvm | xargs) $(cat $PROJECT_DIR/java-args | xargs)"
+        if [ -f "$PROJECT_DIR/.env" ]; then
+            while IFS='=' read -r key value || [ -n "$key" ]; do
+                [[ $key =~ ^#.* ]] && continue
+                [[ -z $key ]] && continue
+                clean_value=$(echo "$value" | tr -d '\r' | xargs)
+                JVM_OPTS="$JVM_OPTS -D$key=$clean_value"
+                export "$key=$clean_value"
+            done < "$PROJECT_DIR/.env"
+        fi
+        if [ "$DEBUG" = true ]; then
+            FINAL_DEBUG_PORT=$((8687 + OFFSET))
+            JVM_OPTS="$JVM_OPTS -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=$FINAL_DEBUG_PORT"
+        fi
+        watch_loop "$REPO_PATH" "$MVN_PATH" "$RUNTIME_DIR" "$NAME" "$PROFILES" &
+        WATCH_PID=$!
+        trap "kill $WATCH_PID 2>/dev/null; exit" EXIT SIGINT SIGTERM
+        echo "================================================================"
+        echo -e "\e[32m[WATCH MODE ACTIVE]\e[0m"
+        echo "Projeto: $NAME (Artifact: $CONTEXT)"
+        echo "URL: http://localhost:$FINAL_HTTP_PORT$URL_PATH"
+        echo "Offset Aplicado: $OFFSET"
+        [ "$DEBUG" = true ] && echo "Debug Port: $FINAL_DEBUG_PORT"
+        echo "================================================================"
+        export JAVA_OPTS="$JVM_OPTS -Djboss.server.base.dir=$RUNTIME_DIR"
+        chmod +x "$WF_BASE_PATH/bin/standalone.sh"
         "$WF_BASE_PATH/bin/standalone.sh" -b localhost -Djboss.socket.binding.port-offset=$OFFSET --server-config=standalone.xml
         ;;
     *)
