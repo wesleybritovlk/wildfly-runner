@@ -99,7 +99,7 @@ install_mvn_standalone() {
         local mvn_v_str=$($sys_mvn -version | head -n 1 | awk '{print $3}')
         if [ ! -d "$SOURCE_DIR/engines/maven-$mvn_v_str" ]; then
             read -p "Maven sistema detectado ($mvn_v_str). Copiar para engines? (S/n): " choice
-            if [ "${choice:-s}" == "s" ]; then
+            if [[ "${choice,,}" =~ ^(s|)$ ]]; then
                 local sys_mvn_home=$(mvn -version | grep "Maven home" | awk -F': ' '{print $2}')
                 cp -r "$sys_mvn_home" "$SOURCE_DIR/engines/maven-$mvn_v_str"
                 echo "Maven $mvn_v_str copiado."
