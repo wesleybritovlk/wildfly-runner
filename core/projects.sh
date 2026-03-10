@@ -69,33 +69,45 @@ remove_project() {
 
 show_status() {
     local target=$1
-    echo -e "\n\e[1;34mSTATUS DOS SERVICOS EM EXECUCAO:\e[0m"
-    printf "%-15s | %-7s | %-7s | %-7s | %-7s | %-30s\n" "PROJETO" "PID" "OFFSET" "PORTA" "DEBUG" "URL PRINCIPAL"
-    echo "----------------------------------------------------------------------------------------------------------------"
+    local uid=$(id -u)
+    printf "\n\033[1;34mSTATUS DOS SERVICOS EM EXECUCAO (UID: $uid):\033[0m\n"
+    printf "%-15s | %-7s | %-7s | %-7s | %-7s | %-10s | %-30s\n" "PROJETO" "PID" "OFFSET" "PORTA" "DEBUG" "MODO" "URL PRINCIPAL"
+    echo "----------------------------------------------------------------------------------------------------------------------------"
     while read -r line; do
         [ -z "$line" ] && continue
+        pid=$(echo "$pid" | awk '{print $2}')
         pid=$(echo "$line" | awk '{print $2}')
-        p_name=$(echo "$line" | grep -oP '(?<=jboss\.server\.base\.dir=/tmp/wf-run/)[^ /]+' | head -n 1)
+        base_dir=$(echo "$line" | grep -oP '(?<=jboss\.server\.base\.dir=)[^ ]+')
+        mode="RUN"
+        [[ "$base_dir" == *"/wf-watch-"* ]] && mode="WATCH"
+        p_name=$(basename "$base_dir")
         [ -z "$p_name" ] && continue
         [ -n "$target" ] && [ "$target" != "$p_name" ] && continue
-
+        local repo_path=$(cat "$SOURCE_DIR/projects/$p_name/.repo-path" 2>/dev/null)
+        local ctx=""
+        local target_dir=$(find "$repo_path" -maxdepth 4 -type d -name "WEB-INF" -path "*/target/*" 2>/dev/null | sed 's|/WEB-INF||' | head -n 1)
+        if [ -n "$target_dir" ]; then
+            ctx=$(basename "$target_dir")
+        else
+            local war_path=$(find "$repo_path" -name "*.war" -path "*/target/*" -not -path "*/.*" 2>/dev/null | head -n 1)
+            ctx=$(basename "$war_path" .war)
+        fi
         offset=$(echo "$line" | grep -oP '(?<=port-offset=)[0-9]+' || echo "0")
         port=$((8080 + offset))
         is_debug="False"
         [[ "$line" == *"-agentlib:jdwp"* ]] && is_debug="True"
-
-        war_name=$(ls /tmp/wf-run/$p_name/deployments/*.war 2>/dev/null | head -n 1 | xargs basename 2>/dev/null || echo "")
-        ctx=${war_name%.war}
-        [ -z "$ctx" ] || [ "$ctx" == "ROOT" ] && url="http://localhost:$port/" || url="http://localhost:$port/$ctx"
-
-        printf "%-15s | %-7s | %-7s | %-7s | %-7s | %-30s\n" "$p_name" "$pid" "$offset" "$port" "$is_debug" "$url"
+        if [ -z "$ctx" ] || [ "$ctx" == "ROOT" ]; then 
+            url="http://localhost:$port/"
+        else 
+            url="http://localhost:$port/$ctx"
+        fi
+        printf "%-15s | %-7s | %-7s | %-7s | %-7s | %-10s | %-30s\n" "$p_name" "$pid" "$offset" "$port" "$is_debug" "$mode" "$url"
         if [ -n "$target" ]; then
             mgmt=$((9990 + offset))
-            ajp=$((8009 + offset))
             https=$((8443 + offset))
             debug_port=$(echo "$line" | grep -oP '(?<=address=)[0-9]+' || echo "N/A")
-            echo -e "   └── Detalhes de Portas: HTTP: $port | HTTPS: $https | MGMT: $mgmt | AJP: $ajp | DEBUG: $debug_port"
+            printf "    └── Detalhes: HTTPS: $https | MGMT: $mgmt | DEBUG: $debug_port | PATH: $base_dir\n"
         fi
-    done < <(ps aux | grep "jboss.server.base.dir=/tmp/wf-run/" | grep -v grep)
-    echo ""
+    done < <(ps aux | grep "jboss.server.base.dir=/tmp/wf-" | grep -v grep)
+    printf "\n"
 }
