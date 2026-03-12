@@ -62,9 +62,11 @@ build_project() {
     local mvn_bin=$3
     local goal=$4
     local skip_tests=$5
+    shift 5
+    local extra_args="$@"
     cd "$repo"
-    echo "Executando: mvn clean $goal ${profiles:+-P $profiles} $skip_tests"
-    $mvn_bin clean $goal ${profiles:+-P $profiles} $skip_tests
+    echo "Executando: mvn clean $goal ${profiles:+-P $profiles} $skip_tests $extra_args"
+    $mvn_bin clean $goal ${profiles:+-P $profiles} $skip_tests $extra_args
 }
 
 deploy_war() {

@@ -77,7 +77,7 @@ case "$1" in
         configure_profiles_cmd "$2"
         ;;
     deploy)
-        SKIP_TESTS="-DskipTests"
+        SKIP_TESTS="-DskipTests -Dmaven.test.skip=true"
         PROFILES_ARG=""
         shift
         while getopts "tP:" opt; do
@@ -101,18 +101,31 @@ case "$1" in
         fi
         PROJECT_DIR="$SOURCE_DIR/projects/$NAME"
         source "$PROJECT_DIR/.engine-versions"
+        export JAVA_HOME="$JAVA_HOME"
+        export PATH="$JAVA_HOME/bin:$PATH"
         REPO_PATH=$(cat "$PROJECT_DIR/.repo-path")
         if [ -z "$PROFILES_ARG" ]; then
-            read -p "Deseja definir perfis Maven para este deploy? (Vazio para usar salvos): " PROFILES_ARG
-            [ -z "$PROFILES_ARG" ] && PROFILES_ARG=$(cat "$PROJECT_DIR/.profiles" | xargs | tr ' ' ',')
+            echo -e "\n\e[34m--- Configuração de Profiles para Deploy ---\e[0m"
+            echo "Profiles salvos atualmente: $(cat "$PROJECT_DIR/.profiles" | xargs | tr ' ' ',')"
+            read -p "Deseja alterar os profiles apenas para este deploy? (s/N): " change_profiles
+            if [[ "$change_profiles" =~ ^[Ss]$ ]]; then
+                cd "$REPO_PATH"
+                echo "Lendo profiles disponíveis no pom.xml..."
+                $MVN_PATH help:all-profiles | grep "Profile Id:" | sed 's/  - Profile Id: //' | sort -u
+                echo ""
+                read -p "Digite os profiles desejados (separados por vírgula): " PROFILES_ARG
+            else
+                PROFILES_ARG=$(cat "$PROJECT_DIR/.profiles" | xargs | tr ' ' ',')
+            fi
         fi
+        [ -z "$PROFILES_ARG" ] && echo "Aviso: Nenhum profile selecionado."
         check_maven_profiles "$REPO_PATH" "$PROFILES_ARG" "$MVN_PATH"
-        build_project "$REPO_PATH" "$PROFILES_ARG" "$MVN_PATH" "package" "$SKIP_TESTS"
+        build_project "$REPO_PATH" "$PROFILES_ARG" "$MVN_PATH" "package" "$SKIP_TESTS" "-Dmaven.compiler.fork=true -Dmaven.compiler.executable=$JAVA_HOME/bin/javac"
         echo -e "\n\e[32mDeploy (Package) concluído para $NAME!\e[0m"
         ;;
     run)
         DEBUG=false
-        SKIP_TESTS="-DskipTests"
+        SKIP_TESTS="-DskipTests -Dmaven.test.skip=true"
         FAST_MODE=false
         shift
         while getopts "dtf" opt; do
@@ -230,7 +243,7 @@ case "$1" in
         OFFSET=$(find_dynamic_offset "$XML_PATH" "$DEBUG")
         RUNTIME_DIR=$(prepare_watch_runtime "$NAME" "$XML_PATH" "$WF_BASE_PATH")
         PROFILES=$(cat "$PROJECT_DIR/.profiles" | xargs | tr ' ' ',')
-        build_project "$REPO_PATH" "$PROFILES" "$MVN_PATH" "install" "-DskipTests"
+        build_project "$REPO_PATH" "$PROFILES" "$MVN_PATH" "install" "-DskipTests -Dmaven.test.skip=true"
         deploy_exploded "$REPO_PATH" "$RUNTIME_DIR"
         WAR_FOLDER=$(ls -d "$RUNTIME_DIR/deployments"/*.war | head -n 1)
         CONTEXT=$(basename "$WAR_FOLDER" .war)
