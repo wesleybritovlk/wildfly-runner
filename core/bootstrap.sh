@@ -1,7 +1,7 @@
 #!/bin/bash
 setup_structure() {
     mkdir -p "$SOURCE_DIR"/{bin,core,engines,projects,templates}
-    [ ! -f "$SOURCE_DIR/global.jvm" ] && echo "-Xms2048m -Xmx2048m -Dfile.encoding=UTF-8" > "$SOURCE_DIR/global.jvm"
+    [ ! -f "$SOURCE_DIR/global.jvm" ] && echo "# CONFIGURAÇÕES GLOBAIS DA JVM - Adicione aqui flags que devem ser aplicadas a todos os projetos." > "$SOURCE_DIR/global.jvm"
     [ ! -f "$SOURCE_DIR/templates/.env.example" ] && echo "VAR_NAME=value" > "$SOURCE_DIR/templates/.env.example"
     [ ! -f "$SOURCE_DIR/templates/.profiles.example" ] && echo "default" > "$SOURCE_DIR/templates/.profiles.example"
     if [ ! -f "$SOURCE_DIR/templates/standalone-h2.xml" ]; then

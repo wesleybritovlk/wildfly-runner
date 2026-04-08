@@ -1,1 +1,1 @@
--Xms2048m -Xmx2048m -Dfile.encoding=ISO-8859-1 -Djava.net.preferIPv4Stack=true
+# CONFIGURAÇÕES GLOBAIS DA JVM - Adicione aqui flags que devem ser aplicadas a todos os projetos.
