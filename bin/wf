@@ -162,6 +162,7 @@ case "$1" in
         export PATH="$JAVA_HOME/bin:$PATH"
         export JAVA="$JAVA_HOME/bin/java"
         WF_BASE_PATH="$SOURCE_DIR/engines/wildfly-$WF_SELECTED_VER"
+        chmod +x "$WF_BASE_PATH/bin"/*.sh 2>/dev/null
         REPO_PATH=$(cat "$PROJECT_DIR/.repo-path")
         XML_PATH=$(ls "$PROJECT_DIR"/*.xml 2>/dev/null | head -n 1)
         [ -z "$XML_PATH" ] && echo "Erro: standalone.xml nao encontrado" && exit 1
@@ -202,14 +203,22 @@ case "$1" in
         HTTP_BASE=$(grep 'socket-binding name="http"' "$XML_PATH" | sed -n 's/.*port="\${[^:]*:\([^}]*\)}".*/\1/p')
         HTTP_BASE=${HTTP_BASE:-8080}
         FINAL_HTTP_PORT=$((HTTP_BASE + OFFSET))
+        LOG_FOLDER="logs-$FINAL_HTTP_PORT"
+        CURRENT_LOG_DIR="$PROJECT_DIR/$LOG_FOLDER"
+        mkdir -p "$CURRENT_LOG_DIR"
+        LOG_OPTS="-verbose:gc -Xloggc:$CURRENT_LOG_DIR/gc.log -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Djboss.server.log.dir=$CURRENT_LOG_DIR"
+        JVM_OPTS="$LOG_OPTS $JVM_OPTS"
+        LOG_DIR=$(echo "$JVM_OPTS" | grep -oP '(?<=-Djboss.server.log.dir=)[^ ]+' | tail -n 1)
+        GC_LOG=$(echo "$JVM_OPTS" | grep -oP '(?<=-Xloggc:)[^ ]+' | tail -n 1)
         echo "================================================================"
         echo "Projeto: $NAME (Artifact: $CONTEXT)"
         echo "URL: http://localhost:$FINAL_HTTP_PORT$URL_PATH"
         echo "Offset Aplicado: $OFFSET"
         [ "$DEBUG" = true ] && echo "Debug Port: $FINAL_DEBUG_PORT"
+        echo "Logs em: ${LOG_DIR:-$CURRENT_LOG_DIR}"
         echo "================================================================"
         export JAVA_OPTS="$JVM_OPTS -Djboss.server.base.dir=$RUNTIME_DIR"
-        chmod +x "$WF_BASE_PATH/bin/standalone.sh"
+        export JBOSS_HOME="$WF_BASE_PATH"
         "$WF_BASE_PATH/bin/standalone.sh" -b localhost -Djboss.socket.binding.port-offset=$OFFSET --server-config=standalone.xml
         ;;
     watch)
@@ -238,6 +247,7 @@ case "$1" in
         export PATH="$JAVA_HOME/bin:$PATH"
         export JAVA="$JAVA_HOME/bin/java"
         WF_BASE_PATH="$SOURCE_DIR/engines/wildfly-$WF_SELECTED_VER"
+        chmod +x "$WF_BASE_PATH/bin"/*.sh 2>/dev/null
         REPO_PATH=$(cat "$PROJECT_DIR/.repo-path")
         XML_PATH=$(ls "$PROJECT_DIR"/*.xml 2>/dev/null | head -n 1)
         OFFSET=$(find_dynamic_offset "$XML_PATH" "$DEBUG")
@@ -269,15 +279,23 @@ case "$1" in
         watch_loop "$REPO_PATH" "$MVN_PATH" "$RUNTIME_DIR" "$NAME" "$PROFILES" &
         WATCH_PID=$!
         trap "kill $WATCH_PID 2>/dev/null; exit" EXIT SIGINT SIGTERM
+        LOG_FOLDER="logs-$FINAL_HTTP_PORT"
+        CURRENT_LOG_DIR="$PROJECT_DIR/$LOG_FOLDER"
+        mkdir -p "$CURRENT_LOG_DIR"
+        LOG_OPTS="-verbose:gc -Xloggc:$CURRENT_LOG_DIR/gc.log -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Djboss.server.log.dir=$CURRENT_LOG_DIR"
+        JVM_OPTS="$LOG_OPTS $JVM_OPTS"
+        LOG_DIR=$(echo "$JVM_OPTS" | grep -oP '(?<=-Djboss.server.log.dir=)[^ ]+' | tail -n 1)
+        GC_LOG=$(echo "$JVM_OPTS" | grep -oP '(?<=-Xloggc:)[^ ]+' | tail -n 1)
         echo "================================================================"
         echo -e "\e[32m[WATCH MODE ACTIVE]\e[0m"
         echo "Projeto: $NAME (Artifact: $CONTEXT)"
         echo "URL: http://localhost:$FINAL_HTTP_PORT$URL_PATH"
         echo "Offset Aplicado: $OFFSET"
         [ "$DEBUG" = true ] && echo "Debug Port: $FINAL_DEBUG_PORT"
+        echo "Logs em: ${LOG_DIR:-$CURRENT_LOG_DIR}"
         echo "================================================================"
         export JAVA_OPTS="$JVM_OPTS -Djboss.server.base.dir=$RUNTIME_DIR"
-        chmod +x "$WF_BASE_PATH/bin/standalone.sh"
+        export JBOSS_HOME="$WF_BASE_PATH"
         "$WF_BASE_PATH/bin/standalone.sh" -b localhost -Djboss.socket.binding.port-offset=$OFFSET --server-config=standalone.xml
         ;;
     *)

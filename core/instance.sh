@@ -6,7 +6,7 @@ prepare_runtime() {
     local wf_base=$3
     local r_dir="/tmp/wf-run-$(id -u)/$name"
     rm -rf "$r_dir"
-    mkdir -p "$r_dir"/{deployments,log,data,tmp}
+    mkdir -p "$r_dir"/{deployments,data,tmp}
     cp -r "$wf_base/standalone/configuration" "$r_dir/"
     cp "$xml_path" "$r_dir/configuration/standalone.xml"
     sed -i '/<deployments>/,/<\/deployments>/d' "$r_dir/configuration/standalone.xml"
@@ -19,7 +19,7 @@ prepare_watch_runtime() {
     local wf_base=$3
     local r_dir="/tmp/wf-watch-$(id -u)/$name"
     rm -rf "$r_dir"
-    mkdir -p "$r_dir"/{deployments,log,data,tmp}
+    mkdir -p "$r_dir"/{deployments,data,tmp}
     cp -r "$wf_base/standalone/configuration" "$r_dir/"
     cp "$xml_path" "$r_dir/configuration/standalone.xml"
     sed -i '/<deployments>/,/<\/deployments>/d' "$r_dir/configuration/standalone.xml"
