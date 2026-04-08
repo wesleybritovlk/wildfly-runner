@@ -46,7 +46,7 @@ case "$1" in
         REPO_PATH=$(cat "$PROJECT_DIR/.repo-path")
         cp $SOURCE_DIR/templates/.env.example "$PROJECT_DIR/.env"
         cp $SOURCE_DIR/templates/.profiles.example "$PROJECT_DIR/.profiles"
-        touch "$PROJECT_DIR/java-opts"
+        echo "# CONFIGURAÇÕES DE JVM ESPECÍFICAS DO PROJETO $NAME" > "$PROJECT_DIR/java-opts"
         configure_profiles "$PROJECT_DIR" "$REPO_PATH" "$MVN_PATH"
         echo -e "\n================================================================"
         [ "$REPO_FLOW" -eq 2 ] && echo "INFO: Criando standalone.xml base em $PROJECT_DIR/standalone.xml" || echo "AVISO: Copie seu standalone.xml para: $PROJECT_DIR/"
@@ -168,7 +168,9 @@ case "$1" in
         [ -z "$XML_PATH" ] && echo "Erro: standalone.xml nao encontrado" && exit 1
         OFFSET=$(find_dynamic_offset "$XML_PATH" "$DEBUG")
         RUNTIME_DIR=$(prepare_runtime "$NAME" "$XML_PATH" "$WF_BASE_PATH")
-        JVM_OPTS="$(cat $SOURCE_DIR/global.jvm | xargs) $(cat $PROJECT_DIR/java-opts | xargs)"
+        GLOBAL_JVM_CLEAN=$(grep -v '^#' "$SOURCE_DIR/global.jvm" | grep -v '^$' | xargs)
+        PROJECT_JVM_CLEAN=$(grep -v '^#' "$PROJECT_DIR/java-opts" | grep -v '^$' | xargs)
+        JVM_OPTS="$GLOBAL_JVM_CLEAN $PROJECT_JVM_CLEAN"
         if [ -f "$PROJECT_DIR/.env" ]; then
             while IFS='=' read -r key value || [ -n "$key" ]; do
                 [[ $key =~ ^#.* ]] && continue
@@ -262,7 +264,9 @@ case "$1" in
         HTTP_BASE=$(grep 'socket-binding name="http"' "$XML_PATH" | sed -n 's/.*port="\${[^:]*:\([^}]*\)}".*/\1/p')
         HTTP_BASE=${HTTP_BASE:-8080}
         FINAL_HTTP_PORT=$((HTTP_BASE + OFFSET))
-        JVM_OPTS="$(cat $SOURCE_DIR/global.jvm | xargs) $(cat $PROJECT_DIR/java-opts | xargs)"
+        GLOBAL_JVM_CLEAN=$(grep -v '^#' "$SOURCE_DIR/global.jvm" | grep -v '^$' | xargs)
+        PROJECT_JVM_CLEAN=$(grep -v '^#' "$PROJECT_DIR/java-opts" | grep -v '^$' | xargs)
+        JVM_OPTS="$GLOBAL_JVM_CLEAN $PROJECT_JVM_CLEAN"
         if [ -f "$PROJECT_DIR/.env" ]; then
             while IFS='=' read -r key value || [ -n "$key" ]; do
                 [[ $key =~ ^#.* ]] && continue
