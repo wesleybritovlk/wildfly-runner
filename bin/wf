@@ -205,7 +205,7 @@ case "$1" in
         HTTP_BASE=$(grep 'socket-binding name="http"' "$XML_PATH" | sed -n 's/.*port="\${[^:]*:\([^}]*\)}".*/\1/p')
         HTTP_BASE=${HTTP_BASE:-8080}
         FINAL_HTTP_PORT=$((HTTP_BASE + OFFSET))
-        LOG_FOLDER="logs-$FINAL_HTTP_PORT"
+        LOG_FOLDER="logs/$FINAL_HTTP_PORT"
         CURRENT_LOG_DIR="$PROJECT_DIR/$LOG_FOLDER"
         mkdir -p "$CURRENT_LOG_DIR"
         LOG_OPTS="-verbose:gc -Xloggc:$CURRENT_LOG_DIR/gc.log -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Djboss.server.log.dir=$CURRENT_LOG_DIR"
@@ -219,6 +219,11 @@ case "$1" in
         [ "$DEBUG" = true ] && echo "Debug Port: $FINAL_DEBUG_PORT"
         echo "Logs em: ${LOG_DIR:-$CURRENT_LOG_DIR}"
         echo "================================================================"
+        export WF_PROJECT_DIR=$PROJECT_DIR
+        export WF_OFFSET=$OFFSET
+        export WF_RUNTIME_DIR=$RUNTIME_DIR
+        export WF_HTTP_PORT=$FINAL_HTTP_PORT
+        [ "$DEBUG" = true ] && export WF_DEBUG_PORT=$FINAL_DEBUG_PORT
         export JAVA_OPTS="$JVM_OPTS -Djboss.server.base.dir=$RUNTIME_DIR"
         export JBOSS_HOME="$WF_BASE_PATH"
         "$WF_BASE_PATH/bin/standalone.sh" -b localhost -Djboss.socket.binding.port-offset=$OFFSET --server-config=standalone.xml
@@ -283,7 +288,7 @@ case "$1" in
         watch_loop "$REPO_PATH" "$MVN_PATH" "$RUNTIME_DIR" "$NAME" "$PROFILES" &
         WATCH_PID=$!
         trap "kill $WATCH_PID 2>/dev/null; exit" EXIT SIGINT SIGTERM
-        LOG_FOLDER="logs-$FINAL_HTTP_PORT"
+        LOG_FOLDER="logs/$FINAL_HTTP_PORT"
         CURRENT_LOG_DIR="$PROJECT_DIR/$LOG_FOLDER"
         mkdir -p "$CURRENT_LOG_DIR"
         LOG_OPTS="-verbose:gc -Xloggc:$CURRENT_LOG_DIR/gc.log -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Djboss.server.log.dir=$CURRENT_LOG_DIR"
@@ -298,6 +303,11 @@ case "$1" in
         [ "$DEBUG" = true ] && echo "Debug Port: $FINAL_DEBUG_PORT"
         echo "Logs em: ${LOG_DIR:-$CURRENT_LOG_DIR}"
         echo "================================================================"
+        export WF_PROJECT_DIR=$PROJECT_DIR
+        export WF_OFFSET=$OFFSET
+        export WF_RUNTIME_DIR=$RUNTIME_DIR
+        export WF_HTTP_PORT=$FINAL_HTTP_PORT
+        [ "$DEBUG" = true ] && export WF_DEBUG_PORT=$FINAL_DEBUG_PORT
         export JAVA_OPTS="$JVM_OPTS -Djboss.server.base.dir=$RUNTIME_DIR"
         export JBOSS_HOME="$WF_BASE_PATH"
         "$WF_BASE_PATH/bin/standalone.sh" -b localhost -Djboss.socket.binding.port-offset=$OFFSET --server-config=standalone.xml
